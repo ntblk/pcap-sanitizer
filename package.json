@@ -1,0 +1,25 @@
+{
+  "name": "pcap",
+  "version": "1.0.0",
+  "main": "sanitize.js",
+  "scripts": {
+    "build": "node tshark.js",
+    "prepublish": "npm run build"
+  },
+  "bin": {
+    "pcapsan": "./app.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "binstruct": "^0.3.1",
+    "braces": "^2.3.2",
+    "commander": "^2.18.0",
+    "execa": "^1.0.0",
+    "ipaddr.js": "^1.8.1",
+    "lodash": "^4.17.10",
+    "netchecksum": "^0.1.1"
+  },
+  "devDependencies": {
+    "flow-bin": "^0.80.0"
+  }
+}
