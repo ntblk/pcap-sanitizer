@@ -5,10 +5,9 @@ const fs = require('fs');
 const ipaddr = require('ipaddr.js');
 const execa = require('execa');
 const braces = require('braces');
-
-var tables = require('./tables.json');
-
 const _ = require('lodash');
+
+const {pcap_tables, pcap_hdr_t, pcaprec_hdr_t} = require('./pcap');
 
 function generateMacAddr(prefix) {
   var mac = prefix || '54:52:00';
@@ -21,11 +20,9 @@ function generateMacAddr(prefix) {
   return mac;
 };
 
-
 function ipToInt(ipv) {
   return Buffer.from(ipv.octets).readUIntBE(0, 4);
 }
-
 
 function intToIp(ip) {
   //return ipaddr.fromByteArray(Buffer.alloc(4).writeUIntBE(ip, 0, 4));
@@ -34,7 +31,6 @@ function intToIp(ip) {
   return ipaddr.fromByteArray(b);
 }
 
-//var ipv4base = ipToInt(ipaddr.parse('10.0.0.1'));
 var ipv4base = ipaddr.parse('10.0.0.1');
 var ipv4offs = 0;
 
@@ -48,10 +44,9 @@ function generateIPAddr() {
   return mac;
 };
 
-function checksum(array) {
- var buffer = array;//Buffer.from(array);
+function checksum(buffer) {
  var sum = 0;
- for (var i=0; i<buffer.length-1; i=i+2) {
+ for (var i=0; i<buffer.length; i=i+2) {
  sum += buffer.readUIntBE(i, 2);
  }
  sum = (sum >> 16) + (sum & 0xFFFF);
@@ -88,8 +83,8 @@ function parseField (field, parentField) {
     type: field[4],
   };
 
-  if (tables.ftypes)
-    p.type_info = tables.ftypes[p.type];
+  if (pcap_tables.ftypes)
+    p.type_info = pcap_tables.ftypes[p.type];
 
   if (p.hex != null) {
     p.hex_orig = p.hex;
@@ -119,7 +114,6 @@ function parseField (field, parentField) {
   var m;
 
   if (['FT_IPv4', 'FT_IPv6'].includes(p.type_info.name)) {
-    //console.log(p);
     p.addr = ipaddr.fromByteArray(p.buffer);
     p.text = p.addr.toString();
 
@@ -133,45 +127,18 @@ function parseField (field, parentField) {
     };
 
     Object.defineProperty(p, 'ip_addr', {
-      // Using shorthand method names (ES2015 feature).
-      // This is equivalent to:
-      // get: function() { return bValue; },
-      // set: function(newValue) { bValue = newValue; },
       get() { return ipaddr.fromByteArray(this.buffer); },
       set(value) { Buffer.from(value.octets).copy(this.buffer, 0); },
-      //get() { return this._ip_addr || (this._ip_addr = ipaddr.fromByteArray(this.buffer)); },
-      //set(value) { this._ip_addr = value; Buffer.from(value.octets).copy(this.buffer, 0); },
       enumerable: true,
       configurable: false,
     });
-
-    //p.set(p.get());
-
   //} else if (['FT_STRING'].includes(p.type_info.name)) {
   //  p.text = p.buffer.toString('ascii');
   } else if (m = p.type_info.name.match(/^FT_(U)?INT(\d+)$/)) {
     var signed = !m[1];
     var byteLength = parseInt(m[2], 10) / 8;
-    // FIXME: hex is sometimes shorter than what we need, so adjust - but why?
-    ////byteLength = Math.min(byteLength, p.length);
+    // TODO: hex is sometimes shorter than what we need, so adjust - but why?
     byteLength = Math.min(byteLength, p.buffer.length);
-    //console.log({p, signed, byteLength});
-
-    // FIXME: why crashing?
-    /*
-    p.number = signed ? p.buffer.readIntBE(0, byteLength) : p.buffer.readUIntBE(0, byteLength);
-
-    p.get = () => {
-      return signed ? p.buffer.readIntBE(0, byteLength) : p.buffer.readUIntBE(0, byteLength)
-    };
-
-    p.set = (value) => {
-      if (signed)
-       p.buffer.writeIntBE(value, 0, byteLength);
-     else
-       p.buffer.writeUIntBE(value, 0, byteLength);
-    }
-    */
 
     Object.defineProperty(p, 'number', {
       get() {
@@ -195,7 +162,6 @@ function dumpFields (a) {
   for (let k in a) {
     if (!k.endsWith('_raw'))
       continue;
-    //console.log(k)
     console.log({k, v: parseField(a[k])})
   }
 }
@@ -224,7 +190,6 @@ async function convert (capfile) {
   // FT_ETHER
   var genMAC = orig => generateMacAddr().replace(/:/g,'').toLowerCase();
 
-  //var g_ip = _.memoize(genIP);
   var g_ip = genIP;
   var g_mac = _.memoize(genMAC);
 
@@ -239,14 +204,6 @@ var frameData = [];
   p.each(frame => {
     const layers = frame._source.layers;
 
-    /*
-    //console.log(frame);
-    r = _.get(frame, '_source.layers.eth["eth.src_raw"]');
-    //console.log(r);
-    r = _.get(frame, '_source.layers.eth["eth.dst_raw"]');
-    //console.log(r);
-*/
-
 /*
     dumpFields(frame._source.layers.eth);
     dumpFields(frame._source.layers.ip);
@@ -254,7 +211,7 @@ var frameData = [];
     dumpFields(frame._source.layers.tcp);
     dumpFields(frame._source.layers.udp);
     dumpFields(frame._source.layers.arp);
-    */
+*/
 
     var a, b;
 
@@ -273,7 +230,7 @@ var frameData = [];
     if (0)
     if (frame._source.layers.tcp) {
       var prt = parseField(frame._source.layers.tcp['tcp.dstport_raw'], frameField);
-      prt.prtname = _.find(tables.decodes['tcp.port'], v => v.selector === prt.number);
+      prt.prtname = _.find(pcap_tables.decodes['tcp.port'], v => v.selector === prt.number);
       console.log(prt.number);
       console.log(prt);
     }
@@ -307,7 +264,7 @@ var frameData = [];
     }
 
     // TODO: updater is like lodash's _.update() - just use that?
-    function remapField(fieldName, updater/*, input, output = input*/) {
+    function remapField(fieldName, updater) {
       let input = a;
       let output = b;
 
@@ -352,9 +309,6 @@ var frameData = [];
   });
 
   write_pcap(frameData, `${capfile}-b.json.pcap`);
-
-  //console.log(caches);
-
   fs.writeFileSync(`${capfile}-b.json`, JSON.stringify(pcap, null, 2), 'utf8');
 }
 
@@ -384,14 +338,25 @@ function fixChecksums(layers, frameField) {
     content
     ]);
 */
-/*
-    const pseudo = Buffer.concat([
-      parseField(layers.ip['ip.src_raw'], frameField).buffer,
-      parseField(layers.ip['ip.dst_raw'], frameField).buffer,
-    */
 
-    fld.number = 0;
-    //fld.number = NetChecksum.raw(pseudo);
+    function getBuf(layer, name) {
+      return parseField(layers[layer][name + '_raw'], frameField).buffer;
+    }
+
+    const pseudo = Buffer.concat([
+      getBuf('ip', ['ip.src']),
+      getBuf('ip', ['ip.dst']),
+      new Buffer([0, 17]),
+      getBuf('udp', ['udp.length']),
+      getBuf('udp', ['udp.srcport']),
+      getBuf('udp', ['udp.dstport']),
+      getBuf('udp', ['udp.length']),
+      new Buffer([0, 0]),
+      parseField(layers.dns_raw, frameField).buffer,
+    ]);
+
+    //fld.number = 0;
+    fld.number = NetChecksum.raw(pseudo);
   }
 }
 
@@ -415,27 +380,6 @@ typedef struct pcaprec_hdr_s {
         guint32 orig_len;       /* actual length of packet
 } pcaprec_hdr_t;
 */
-
-const binstruct = require('binstruct');
-
-const pcap_hdr_t = binstruct
-.def({littleEndian:true})
-//.def({littleEndian:false})
-//.def()
-  .uint32('magic_number')
-  .uint16('version_major')
-  .uint16('version_minor')
-  .int32('thiszone')
-  .uint32('sigfigs')
-  .uint32('snaplen')
-  .uint32('network');
-
-const pcaprec_hdr_t = binstruct
-  .def({littleEndian:true})
-  .uint32('ts_sec')
-  .uint32('ts_usec')
-  .uint32('incl_len')
-  .uint32('orig_len');
 
 async function write_pcap (frames, oname) {
 
