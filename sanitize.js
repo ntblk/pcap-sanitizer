@@ -165,10 +165,25 @@ function dumpFields (a) {
   }
 }
 
-async function convert (capfile) {
-  var pcap = fs.readFileSync(`${capfile}.json`, 'utf8');
-  pcap = JSON.parse(pcap);
-  fs.writeFileSync(`${capfile}-a.json`, JSON.stringify(pcap, null, 2), 'utf8');
+function streamMap (inStream, glob, cb) {
+  return inStream
+  .pipe(JSONStream.parse('*'))
+  .pipe(es.mapSync(cb));
+}
+
+async function convert (inStream, writeStream, capfile) {
+  write_pcap_header(writeStream);
+
+  await streamMap(inStream, '*', frame => {
+    var res = convertFrame(frame._source.layers);
+    write_pcap_frame(writeStream, res);
+  });
+  //writeStream.end();
+
+
+  //var pcap = fs.readFileSync(`${capfile}.json`, 'utf8');
+  //pcap = JSON.parse(pcap);
+  //fs.writeFileSync(`${capfile}-a.json`, JSON.stringify(pcap, null, 2), 'utf8');
 
   var og_ip = _.memoize(hex => {
     var arr = ipv4base.toByteArray();
@@ -196,16 +211,6 @@ async function convert (capfile) {
     ip: g_ip.cache,
     mac: g_mac.cache,
   };
-
-  var frameData = [];
-
-  var writeStream = fs.createWriteStream(`${capfile}-b.json.pcap`);
-  const p = _(pcap);
-  p.each(frame => {
-    frameData.push(convertFrame(frame._source.layers));
-  });
-  write_pcap(frameData, writeStream);
-  writeStream.end();
 
   function convertFrame (layers) {
     //const layers = frame._source.layers;
@@ -296,13 +301,11 @@ async function convert (capfile) {
 
     return {layers, data: frameField.buffer};
   }
-
-  //fs.writeFileSync(`${capfile}-b.json`, JSON.stringify(pcap, null, 2), 'utf8');
 }
 
 const NetChecksum = require('netchecksum');
 
-function fixChecksums(layers, frameField) {
+function fixChecksums (layers, frameField) {
   // update ipv4 checksum
   if (layers.ip) {
     var hdr = parseField(layers.ip_raw, frameField);
@@ -337,7 +340,7 @@ function fixChecksums(layers, frameField) {
   }
 }
 
-async function write_pcap (frames, writeStream) {
+async function write_pcap_header (writeStream) {
   var hdr = {};
   hdr.magic_number = 0xa1b2c3d4;
   hdr.version_major = 2;
@@ -345,29 +348,34 @@ async function write_pcap (frames, writeStream) {
   hdr.network = 1; // ethernet
   hdr.snaplen = 65535;
   writeStream.write(pcap_hdr_t.write(hdr));
-
-  frames.forEach(frame => {
-    var ts = [];
-    if (frame.layers.frame)
-      ts = frame.layers.frame['frame.time_epoch'].split('.').map(v => parseInt(v, 10));
-
-    var rec_hdr = {
-      ts_sec: ts[0],
-      ts_usec: ts[1]/1000,
-      incl_len: frame.data.length, // TODO: snaplen?
-      orig_len: frame.data.length,
-    };
-
-    writeStream.write(pcaprec_hdr_t.write(rec_hdr));
-    writeStream.write(frame.data);
-  });
 }
 
+async function write_pcap_frame (writeStream, frame) {
+  var ts = [];
+  if (frame.layers.frame)
+    ts = frame.layers.frame['frame.time_epoch'].split('.').map(v => parseInt(v, 10));
+
+  var rec_hdr = {
+    ts_sec: ts[0],
+    ts_usec: ts[1]/1000,
+    incl_len: frame.data.length, // TODO: snaplen?
+    orig_len: frame.data.length,
+  };
+
+  writeStream.write(pcaprec_hdr_t.write(rec_hdr));
+  writeStream.write(frame.data);
+}
+
+const JSONStream = require('JSONStream');
+const es = require('event-stream');
+
 async function run (capfile) {
-  await execa.shell(`tshark -r ${capfile} -T json -x > ${capfile}.json`);
-  //await execa.shell(`tshark -r ${capfile} -T jsonraw > ${capfile}.json`);
-  convert(capfile);
-  //await execa.shell(`python json2pcap.py ${capfile}-b.json`);
+  //var proc = execa.shell(`tshark -r ${capfile} -T json -x > ${capfile}.json`);
+  var proc = execa.shell(`tshark -r ${capfile} -T json -x`);
+
+  var writeStream = fs.createWriteStream(`${capfile}-b.json.pcap`);
+  await convert(proc.stdout, writeStream, capfile);
+  //writeStream.end();
 }
 
 module.exports = run;
