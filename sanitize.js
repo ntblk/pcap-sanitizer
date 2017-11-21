@@ -122,7 +122,6 @@ function parseField (field, parentField) {
     };
 
     p.set = (value) => {
-      //Buffer.from(value.toByteArray()).copy(p.buffer, 0);
       Buffer.from(value.octets).copy(p.buffer, 0);
     };
 
@@ -289,23 +288,6 @@ var frameData = [];
       field[0] = newaddr;
       output[fieldName] = field;
     }
-
-    /*
-    for (var k of Object.keys(input)) {
-      console.log(k);
-    }
-    */
-
-/*
-    var p = _.zipObject (['hex', 'position', 'length', 'bitmask', 'type'], r);
-
-
-    //frame._source.layers.eth_raw[0] = mutate(frame._source.layers.eth_raw[0])(p.start, p.end, newaddr);
-    var newraw = frame._source.layers.eth_raw[0].splice(p.start, newaddr.length, newaddr);
-    frame._source.layers.eth_raw[0] = newraw;
-*/
-
-    //delete frame._source.layers.eth;
   });
 
   write_pcap(frameData, `${capfile}-b.json.pcap`);
@@ -326,7 +308,6 @@ function fixChecksums(layers, frameField) {
   }
 
   if (layers.udp && layers.udp['udp.checksum_raw']) {
-    //var dns = parseField(layers.dns_raw, frameField);
     var fld = parseField(layers.udp['udp.checksum_raw'], frameField);
     var hdr = parseField(layers.udp_raw, frameField);
 
@@ -354,53 +335,38 @@ async function write_pcap (frames, oname) {
 
   let writeStream = fs.createWriteStream(oname);
 
-  //var hdr = pcap_hdr_t.wrap(b);
   var hdr = {};
   hdr.magic_number = 0xa1b2c3d4;
   hdr.version_major = 2;
   hdr.version_minor = 4;
   hdr.network = 1; // ethernet
-  hdr.snaplen = 65535; // ?
+  hdr.snaplen = 65535;
   writeStream.write(pcap_hdr_t.write(hdr));
 
   frames.forEach(frame => {
-
     var ts = [];
     if (frame.layers.frame)
       ts = frame.layers.frame['frame.time_epoch'].split('.').map(v => parseInt(v, 10));
 
-    console.log(ts);
-
     var rec_hdr = {
       ts_sec: ts[0],
       ts_usec: ts[1]/1000,
-      incl_len: frame.data.length,
+      incl_len: frame.data.length, // TODO: snaplen?
       orig_len: frame.data.length,
     };
+
     writeStream.write(pcaprec_hdr_t.write(rec_hdr));
     writeStream.write(frame.data);
-
   });
 
   writeStream.end();
 }
-
-/*
-String.prototype.splice = function(startIndex,length,insertString){
-    return this.substring(0,startIndex) + insertString + this.substring(startIndex + length);
-};
-*/
 
 async function run (capfile) {
   await execa.shell(`tshark -r ${capfile} -T json -x > ${capfile}.json`);
   //await execa.shell(`tshark -r ${capfile} -T jsonraw > ${capfile}.json`);
   convert(capfile);
   //await execa.shell(`python json2pcap.py ${capfile}-b.json`);
-
-  //diff -u data/cloudflare.pcap-a.json data/cloudflare.pcap-b.json
-  //old: diff -u data/cloudflare-a.json data/cloudflare-b.json
 }
-
-//run('data/nb6-http.pcap');
 
 module.exports = run;
