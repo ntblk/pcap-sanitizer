@@ -197,11 +197,18 @@ async function convert (capfile) {
     mac: g_mac.cache,
   };
 
-var frameData = [];
+  var frameData = [];
 
+  var writeStream = fs.createWriteStream(`${capfile}-b.json.pcap`);
   const p = _(pcap);
   p.each(frame => {
-    const layers = frame._source.layers;
+    frameData.push(convertFrame(frame._source.layers));
+  });
+  write_pcap(frameData, writeStream);
+  writeStream.end();
+
+  function convertFrame (layers) {
+    //const layers = frame._source.layers;
 
 /*
     dumpFields(frame._source.layers.eth);
@@ -215,7 +222,6 @@ var frameData = [];
     var a, b;
 
     var frameField = parseField(layers.frame_raw);
-    frameData.push({layers, data: frameField.buffer});
 
 /*
     if (frame._source.layers.ip) {
@@ -227,8 +233,8 @@ var frameData = [];
     }
     */
     if (0)
-    if (frame._source.layers.tcp) {
-      var prt = parseField(frame._source.layers.tcp['tcp.dstport_raw'], frameField);
+    if (layers.tcp) {
+      var prt = parseField(layers.tcp['tcp.dstport_raw'], frameField);
       prt.prtname = _.find(pcap_tables.decodes['tcp.port'], v => v.selector === prt.number);
       console.log(prt.number);
       console.log(prt);
@@ -236,7 +242,6 @@ var frameData = [];
 
     a = layers.ip;
     b = a;
-    //b = frame._source.layers.ip = {};
     remap("ip.{src,dst}", g_ip);
 
     a = layers.arp;
@@ -248,7 +253,7 @@ var frameData = [];
 
     a = layers.ipv6;
     //b = a;
-    b = frame._source.layers.ipv6 = {};
+    b = layers.ipv6 = {};
     remap("ipv6.{src,dst}", g_ip);
 
     a = layers.eth;
@@ -288,10 +293,11 @@ var frameData = [];
       field[0] = newaddr;
       output[fieldName] = field;
     }
-  });
 
-  write_pcap(frameData, `${capfile}-b.json.pcap`);
-  fs.writeFileSync(`${capfile}-b.json`, JSON.stringify(pcap, null, 2), 'utf8');
+    return {layers, data: frameField.buffer};
+  }
+
+  //fs.writeFileSync(`${capfile}-b.json`, JSON.stringify(pcap, null, 2), 'utf8');
 }
 
 const NetChecksum = require('netchecksum');
@@ -331,10 +337,7 @@ function fixChecksums(layers, frameField) {
   }
 }
 
-async function write_pcap (frames, oname) {
-
-  let writeStream = fs.createWriteStream(oname);
-
+async function write_pcap (frames, writeStream) {
   var hdr = {};
   hdr.magic_number = 0xa1b2c3d4;
   hdr.version_major = 2;
@@ -358,8 +361,6 @@ async function write_pcap (frames, oname) {
     writeStream.write(pcaprec_hdr_t.write(rec_hdr));
     writeStream.write(frame.data);
   });
-
-  writeStream.end();
 }
 
 async function run (capfile) {
