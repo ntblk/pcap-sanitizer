@@ -1,11 +1,9 @@
-//@flow
-
 const assert = require('assert');
-const fs = require('fs');
 const ipaddr = require('ipaddr.js');
-const execa = require('execa');
 const braces = require('braces');
 const _ = require('lodash');
+const JSONStream = require('JSONStream');
+const es = require('event-stream');
 
 const {pcap_tables, pcap_hdr_t, pcaprec_hdr_t} = require('./pcap');
 
@@ -44,16 +42,15 @@ function generateIPAddr() {
   return mac;
 };
 
-function checksum(buffer) {
- var sum = 0;
- for (var i=0; i<buffer.length; i=i+2) {
- sum += buffer.readUIntBE(i, 2);
- }
- sum = (sum >> 16) + (sum & 0xFFFF);
- sum += (sum >> 16);
- sum = ~sum;
- //return unsigned
- return (new Uint16Array([sum]))[0];
+function checksum (buffer) {
+  const wordSize = 2;
+  var sum = 0;
+  for (var i = 0; i < buffer.length; i += wordSize)
+    sum += buffer.readUIntBE(i, Math.min(wordSize, buffer.length-i));
+  sum = (sum >> 16) + (sum & 0xFFFF);
+  sum += (sum >> 16);
+  sum = ~sum;
+  return (new Uint16Array([sum]))[0];
 }
 
 function mutate(s) {
@@ -171,7 +168,7 @@ function streamMap (inStream, glob, cb) {
   .pipe(es.mapSync(cb));
 }
 
-async function convert (inStream, writeStream, capfile) {
+async function convert (inStream, writeStream, opts) {
   write_pcap_header(writeStream);
 
   await streamMap(inStream, '*', frame => {
@@ -324,18 +321,19 @@ function fixChecksums (layers, frameField) {
       return parseField(layers[layer][name + '_raw'], frameField).buffer;
     }
 
-    const pseudo = Buffer.concat([
+    var pseudovec = [
       getBuf('ip', ['ip.src']),
       getBuf('ip', ['ip.dst']),
-      new Buffer([0, 17]), // udp
+      Buffer.from([0, 17]), // udp
       getBuf('udp', ['udp.length']),
       getBuf('udp', ['udp.srcport']),
       getBuf('udp', ['udp.dstport']),
       getBuf('udp', ['udp.length']),
-      new Buffer([0, 0]),
+      Buffer.from([0, 0]),
       frameField.buffer.slice(hdr.position + hdr.length),
-    ]);
+    ];
 
+    const pseudo = Buffer.concat(pseudovec);
     fld.number = NetChecksum.raw(pseudo);
   }
 }
@@ -351,9 +349,12 @@ async function write_pcap_header (writeStream) {
 }
 
 async function write_pcap_frame (writeStream, frame) {
-  var ts = [];
-  if (frame.layers.frame)
-    ts = frame.layers.frame['frame.time_epoch'].split('.').map(v => parseInt(v, 10));
+  var ts = [0,0];
+
+  // Unfortunately not present in jsonraw output
+  let epoch = frame.layers.frame['frame.time_epoch'];
+  if (epoch)
+    ts = epoch.split('.').map(v => parseInt(v, 10));
 
   var rec_hdr = {
     ts_sec: ts[0],
@@ -366,16 +367,4 @@ async function write_pcap_frame (writeStream, frame) {
   writeStream.write(frame.data);
 }
 
-const JSONStream = require('JSONStream');
-const es = require('event-stream');
-
-async function run (capfile) {
-  //var proc = execa.shell(`tshark -r ${capfile} -T json -x > ${capfile}.json`);
-  var proc = execa.shell(`tshark -r ${capfile} -T json -x`);
-
-  var writeStream = fs.createWriteStream(`${capfile}-b.json.pcap`);
-  await convert(proc.stdout, writeStream, capfile);
-  //writeStream.end();
-}
-
-module.exports = run;
+module.exports = convert;
