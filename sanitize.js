@@ -171,13 +171,6 @@ function streamMap (inStream, glob, cb) {
 async function convert (inStream, writeStream, opts) {
   write_pcap_header(writeStream);
 
-  await streamMap(inStream, '*', frame => {
-    var res = convertFrame(frame._source.layers);
-    write_pcap_frame(writeStream, res);
-  });
-  //writeStream.end();
-
-
   //var pcap = fs.readFileSync(`${capfile}.json`, 'utf8');
   //pcap = JSON.parse(pcap);
   //fs.writeFileSync(`${capfile}-a.json`, JSON.stringify(pcap, null, 2), 'utf8');
@@ -188,10 +181,16 @@ async function convert (inStream, writeStream, opts) {
     return ipaddr.fromByteArray(arr);
   });
 
+  var rangeList = {
+    redact: opts.private_ranges,
+  };
+
   // FT_IPv4
   var genIP = (hex, field) => {
     var ipa = field.ip_addr;
-    if (['private'].includes(ipa.range())) {
+
+    if (ipaddr.subnetMatch(ipa, rangeList, 'none') === 'redact' ||
+        (opts.private && ['private'].includes(ipa.range()))) {
       field.ip_addr = og_ip(hex);
     }
 
@@ -208,6 +207,14 @@ async function convert (inStream, writeStream, opts) {
     ip: g_ip.cache,
     mac: g_mac.cache,
   };
+
+
+  await streamMap(inStream, '*', frame => {
+    var res = convertFrame(frame._source.layers);
+    write_pcap_frame(writeStream, res);
+  });
+  //writeStream.end();
+
 
   function convertFrame (layers) {
     //const layers = frame._source.layers;

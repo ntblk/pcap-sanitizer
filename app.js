@@ -7,7 +7,12 @@ const execa = require('execa');
 const fs = require('fs');
 
 function collect(val, memo) {
-  val = ipaddr.process(val);
+  if (ipaddr.isValid(val)) {
+    val = ipaddr.parse(val);
+    val = [val, val.kind() == 'ipv6' ? 128 : 32];
+  } else {
+    val = ipaddr.parseCIDR(val);
+  }
   memo.push(val);
   return memo;
 }
@@ -15,6 +20,7 @@ function collect(val, memo) {
 program
 //  .version('0.0.0')
   .option('-r, --redact [ip]', 'IP, CIDR or subnet to redact', collect, [])
+  .option('-p, --redact-private', 'redact all subnets assigned for private use')
   .option('-a, --append', 'Append to existing pcap if [file] exists')
   .option('-o, --out [file]', 'Specify a single output file', '-')
   .parse(process.argv);
@@ -22,14 +28,10 @@ program
 async function run () {
   var opts = {};
   opts.private_ranges = program.redact;
-  //console.log(opts);
-  //return;
+  opts.private = !!program.redactPrivate;
   var files = program.args;
 
-  // `${capfile}-b.json.pcap`
-
   var writeStream;
-
   if (program.out !== undefined && program.out !== '-')
     writeStream = fs.createWriteStream(program.out);
   else if (!process.stdout.isTTY)
@@ -39,7 +41,9 @@ async function run () {
     process.exit(1);
   }
 
-  files.forEach(f => sani(f, writeStream, opts));
+  for (let f of files)
+    await sani(f, writeStream, opts);
+  //files.forEach(f => sani(f, writeStream, opts));
   //writeStream.end();
 }
 
