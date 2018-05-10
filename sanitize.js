@@ -197,14 +197,18 @@ async function convert (inStream, writeStream, opts) {
     return hex;
   };
 
+  var genMACaddr = orig => generateMacAddr().replace(/:/g,'').toLowerCase();
+  genMACaddr = _.memoize(genMACaddr);
+
   // FT_ETHER
-  var genMAC = orig => generateMacAddr().replace(/:/g,'').toLowerCase();
-  genMAC = _.memoize(genMAC);
+  var genMAC = (hex, field) => {
+    if (opts.mac)
+      Buffer.from(genMACaddr(hex), 'hex').copy(field.buffer);
+    return hex;
+  };
 
   var g_ip = genIP;
-  // FIXME: mac addr mapping not working
-  // field.buffer.write(Buffer.from(genMAC(), hex)
-  var g_mac = (hex, field) => opts.mac ? genMAC(hex) : hex;
+  var g_mac = genMAC;
 
   var caches = {
     ip: g_ip.cache,
