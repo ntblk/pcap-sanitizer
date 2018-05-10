@@ -19,7 +19,8 @@
     "execa": "^1.0.0",
     "ipaddr.js": "^1.8.1",
     "lodash": "^4.17.10",
-    "netchecksum": "^0.1.1"
+    "netchecksum": "^0.1.1",
+    "seedrandom": "^2.4.4"
   },
   "devDependencies": {
     "flow-bin": "^0.80.0"

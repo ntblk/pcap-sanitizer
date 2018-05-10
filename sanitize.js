@@ -7,12 +7,15 @@ const es = require('event-stream');
 
 const {pcap_tables, pcap_hdr_t, pcaprec_hdr_t} = require('./pcap');
 
+const seedrandom = require('seedrandom');
+var rng = seedrandom('misc');
+
 function generateMacAddr(prefix) {
   var mac = prefix || '54:52:00';
 
   for (var i = 0; i < 6; i++) {
     if (i%2 === 0) mac += ':';
-    mac += Math.floor(Math.random()*16).toString(16);
+    mac += Math.floor(rng()*16).toString(16);
   }
 
   return mac;
