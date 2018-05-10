@@ -21,6 +21,7 @@ program
 //  .version('0.0.0')
   .option('-r, --redact [ip]', 'IP, CIDR or subnet to redact', collect, [])
   .option('-p, --redact-private', 'redact all subnets assigned for private use')
+  .option('-m, --redact-mac', 'randomize ethernet hardware MAC addresses')
   .option('-a, --append', 'Append to existing pcap if [file] exists')
   .option('-o, --out [file]', 'Specify a single output file', '-')
   .parse(process.argv);
@@ -29,6 +30,7 @@ async function run () {
   var opts = {};
   opts.private_ranges = program.redact;
   opts.private = !!program.redactPrivate;
+  opts.mac = !!program.redactMac;
   var files = program.args;
 
   var writeStream;

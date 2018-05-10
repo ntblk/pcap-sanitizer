@@ -199,9 +199,12 @@ async function convert (inStream, writeStream, opts) {
 
   // FT_ETHER
   var genMAC = orig => generateMacAddr().replace(/:/g,'').toLowerCase();
+  genMAC = _.memoize(genMAC);
 
   var g_ip = genIP;
-  var g_mac = _.memoize(genMAC);
+  // FIXME: mac addr mapping not working
+  // field.buffer.write(Buffer.from(genMAC(), hex)
+  var g_mac = (hex, field) => opts.mac ? genMAC(hex) : hex;
 
   var caches = {
     ip: g_ip.cache,
