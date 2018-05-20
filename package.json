@@ -10,7 +10,7 @@
     "prepublish": "npm run build"
   },
   "bin": {
-    "pcapsan": "./app.js"
+    "pcap-sanitizer": "./app.js"
   },
   "license": "MIT",
   "keywords": [
@@ -20,7 +20,7 @@
     "sanitize",
     "filter",
     "packet",
-    "capture",
+    "capture"
   ],
   "dependencies": {
     "JSONStream": "^1.3.4",
@@ -34,7 +34,5 @@
     "netchecksum": "^0.1.1",
     "seedrandom": "^2.4.4"
   },
-  "devDependencies": {
-    "flow-bin": "^0.80.0"
-  }
+  "devDependencies": {}
 }
