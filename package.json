@@ -1,6 +1,6 @@
 {
   "name": "pcap-sanitizer",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "remove private data and remap IP addresses in packet captures",
   "author": "NetBlocks Team <team@netblocks.org>",
   "homepage": "https://netblocks.org/",
